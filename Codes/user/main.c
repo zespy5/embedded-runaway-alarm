@@ -20,14 +20,13 @@
 
 void RCC_Configure(void);
 void GPIO_Configure(void);
-
 void is_answer(void);
-
 void setDirection();
+
 
 int directionFlag = 0;
 int onOff = 1;
-extern int Alarm_ONOFF;//have to combine isAlramOn
+extern int Alarm_ONOFF;
 int answer;
 
 
@@ -41,15 +40,12 @@ void RCC_Configure(void)
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);    // interrupt
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD,ENABLE);  // RCC GPIO D
 
-
   TIM_ClearITPendingBit(TIM2, TIM_IT_CC2);
-// Clear TIM2 Capture compare interrupt pending bit
-
 }
 
 //------------------------------------------------- blue tooth below------------
 
-uint16_t receive_string[50];
+uint16_t receive_string[50]; //the buffer for a received words from UART4_IRQHandler
 extern uint16_t user_answer[10];
 int string_count = 0;
 int day = 0;
@@ -62,20 +58,18 @@ int answer_correct;
 
 void RCC_Configure_bluetooth(void)
 {
-   // TODO: Enable the APB2 peripheral clock using the function 'RCC_APB2PeriphClockCmd'
-   /* UART TX/RX port clock enable */
-   
-   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE); //UART 4
+   //UART 4 TX,RX clock enable
+   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE); 
 
-   /* USART4 clock enable */ 
+   // USART4 clock enable  
    RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
       
-   /* Alternate Function IO clock enable */
+   // Alternate Function IO clock enable
    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
 }
 
 void GPIO_Configure_bluetooth(void)
-{
+{   
     GPIO_InitTypeDef GPIO_InitStructure;
    
     //TX2
@@ -92,11 +86,11 @@ void GPIO_Configure_bluetooth(void)
 
 void USART4_Init(void)
 {
+  //UART init
    USART_InitTypeDef USART_InitStructure;
 
    USART_Cmd(UART4, ENABLE);
    
-
    USART_InitStructure.USART_BaudRate = 9600;
    USART_InitStructure.USART_StopBits = USART_StopBits_1_5;
    USART_InitStructure.USART_WordLength = USART_WordLength_8b;
@@ -105,18 +99,15 @@ void USART4_Init(void)
    USART_InitStructure.USART_Mode= USART_Mode_Rx| USART_Mode_Tx;
    USART_Init(UART4, &USART_InitStructure);
    
-
    USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
 }
 
 void NVIC_Configure_bluetooth(void) {
-
+    //setting interrupt priority
     NVIC_InitTypeDef NVIC_InitStructure;
     
-    // TODO: fill the arg you want
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
    
-    
     NVIC_EnableIRQ(UART4_IRQn);
     NVIC_InitStructure.NVIC_IRQChannel = UART4_IRQn;
     NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1; 
@@ -125,17 +116,23 @@ void NVIC_Configure_bluetooth(void) {
     NVIC_Init(&NVIC_InitStructure);
 }
 
+
 void UART4_IRQHandler() {
+  //uart handler can receive just one character
    uint16_t word;
+
     if(USART_GetITStatus(UART4,USART_IT_RXNE)!=RESET){
        // the most recent received data by the USART1 peripheral
        word = USART_ReceiveData(UART4);
        
+       //while start_offset is 1
        if (start_offset == 1) {     
-         //0x3b�� ;�� �ǹ��� -> ;�� ������ �ܾ� �Է� �ޱ� �ߴ��ϰ� �Է� ó��(string_partition) ����
+         // ;(ascii 0x3b) <- The end of string
          if (word == 0x3b) { //SetAlarm 7-19:20 [0x53, 0x65, 0x74, 0x41, 0x6c, 0x61, 0x72, 0x6d, 0x20, 0x37, 0x2d, 0x31, 0x39, 0x3a, 0x32, 0x30]
            
+           //we can split
            string_partition();
+           //and change the start_offset's value to 0
            start_offset = 0;
          }
          else {
@@ -147,15 +144,17 @@ void UART4_IRQHandler() {
          }
        }
        
-       //0x40�� @�� �ǹ��� -> @�� ������ �ܾ� �Է� ����
+       /* @(ascii 0x40) <- if the board gets the first alphabet, the global variable start_offset value is changed to 1
+       then handler can receive the words.*/ 
        if (word == 0x40)  start_offset = 1;
        
        
        
-       
+       //while start_offset is 2
        if (start_offset ==2){
-         // ; �Է½� �Է� ����
-         if (word == 0x3b){//;
+         // ;(ascii 0x3b) <- The end of string
+         if (word == 0x3b){
+          // we can check input string is the answer 
            is_answer();
            start_offset = 0;
          }
